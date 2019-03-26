@@ -1,0 +1,43 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+$script = <<-SCRIPT
+echo I am provisioning...
+
+adduser jenkins &&\
+    echo "jenkins\njenkins" | passwd jenkins &&\
+    usermod -aG sudo jenkins &&\
+    su jenkins
+
+apt-get -q update &&\
+    apt-get install -y locales &&\
+    locale-gen en_US.UTF-8 &&\
+    DEBIAN_FRONTEND="noninteractive" apt-get -q upgrade -y -o Dpkg::Options::="--force-confnew" --no-install-recommends &&\
+    DEBIAN_FRONTEND="noninteractive" apt-get -q install -y -o Dpkg::Options::="--force-confnew" --no-install-recommends \
+        openssh-server \
+        default-jre &&\
+    apt-get -q autoremove &&\
+    apt-get -q clean -y && rm -rf /var/lib/apt/lists/* && rm -f /var/cache/apt/*.bin &&\
+    sed -i 's|session    required     pam_loginuid.so|session    optional     pam_loginuid.so|g' /etc/pam.d/sshd &&\
+    mkdir -p /var/run/sshd
+
+cd /tmp &&\
+    wget https://archive.apache.org/dist/tomcat/tomcat-8/v8.5.39/bin/apache-tomcat-8.5.39.tar.gz &&\
+    mkdir $HOME/tomcat &&\
+    tar xzvf apache-tomcat-8.5.39.tar.gz -C $HOME/tomcat --strip-components=1 &&\
+    chown -R jenkins $HOME/tomcat
+
+sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config; sudo systemctl restart sshd; 
+
+SCRIPT
+
+Vagrant.configure(2) do |config|
+  config.vm.box = "ubuntu/xenial64"
+  config.vm.define :node1 do |node1_config|
+    node1_config.vm.network "private_network", ip:"192.168.2.99"
+    node1_config.vm.provider :virtualbox do |vb|
+      vb.customize ["modifyvm", :id, "--memory", "2048"]
+      vb.customize ["modifyvm", :id, "--cpus", "2"]
+    end
+  end
+  config.vm.provision "shell", inline: $script, run:"always"
+end
